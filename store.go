@@ -20,7 +20,7 @@ var quorumSettings = clickhouse.Settings{
 type DistributedMigrationsTableConfig struct {
 	Cluster     string // Ex: default
 	Database    string // Ex: mydb
-	TableName   string // Ex: migrations_local
+	TableName   string // Ex: migrations
 	ShardingKey string // Ex: rand()
 }
 
