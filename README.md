@@ -1,6 +1,5 @@
 ## Goose ClickHouse Store
 [![Go Test](https://github.com/Kachit/goose-clickhouse-store/actions/workflows/tests.yml/badge.svg)](https://github.com/Kachit/goose-clickhouse-store/actions)
-[![Codecov](https://codecov.io/github/Kachit/goose-clickhouse-store/graph/badge.svg)](https://codecov.io/github/Kachit/goose-clickhouse-store)
 [![Go Report Card](https://goreportcard.com/badge/github.com/kachit/goose-clickhouse-store)](https://goreportcard.com/report/github.com/kachit/goose-clickhouse-store)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/Kachit/goose-clickhouse-store)](https://go.dev/doc/go1.24)
 [![Release](https://img.shields.io/github/v/release/Kachit/goose-clickhouse-store.svg)](https://github.com/Kachit/goose-clickhouse-store/releases)

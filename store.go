@@ -11,6 +11,15 @@ import (
 	"github.com/pressly/goose/v3/database"
 )
 
+var DistributedMigrationsTableConfigByDefault = DistributedMigrationsTableConfig{
+	Cluster:     "default",
+	ShardingKey: "rand()",
+}
+
+var LocalMigrationsTableConfigByDefault = LocalMigrationsTableConfig{
+	ReplicaName: "{replica}",
+}
+
 type DistributedMigrationsTableConfig struct {
 	Cluster     string // Ex: default
 	Database    string // Ex: mydb
