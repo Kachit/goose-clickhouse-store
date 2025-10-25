@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log"
 
@@ -19,14 +18,14 @@ func main() {
 		log.Fatal(err)
 	}
 
-	conn, err := clickhouse.Open(clickhouseConfig)
-	if err != nil {
+	conn := clickhouse.OpenDB(clickhouseConfig)
+	if conn.Ping() != nil {
 		log.Fatal(err)
 	}
 
 	defer conn.Close()
 
-	dbName := "mystorage"
+	dbName := "dbname"
 
 	clickhouseStore, err := goose_clickhouse_store.NewStore(
 		goose_clickhouse_store.DistributedMigrationsTableConfig{
@@ -36,7 +35,7 @@ func main() {
 			ShardingKey: "rand()",
 		},
 		goose_clickhouse_store.LocalMigrationsTableConfig{
-			ZooKeeperPath: "/clickhouse/tables/{shard}/dbname/migrations",
+			ZooKeeperPath: fmt.Sprintf("/clickhouse/tables/{shard}/%s/migrations", dbName),
 			ReplicaName:   "{replica}",
 			Database:      dbName,
 			TableName:     "migrations_local",
@@ -45,14 +44,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	p, err := goose.NewProvider(
 		"",
-		db, // We don't use this DB, but goose requires it
+		conn,
 		migrations.Embed,
 		goose.WithStore(clickhouseStore),
 	)

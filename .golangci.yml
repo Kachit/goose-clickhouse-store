@@ -36,7 +36,7 @@ issues:
       linters:
         - funlen
         - dupl
+        - lll
   exclude-dirs:
-    - lua
-    - mocks
+    - example
     - tmp

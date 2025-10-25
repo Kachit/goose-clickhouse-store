@@ -205,7 +205,7 @@ func (suite *StoreTestSuite) TestGetLatestVersionNotFound() {
 	assert.Equal(suite.T(), int64(-1), res)
 }
 
-//func (suite *StoreTestSuite) TestGetLatestVersionInvalid() {
+// func (suite *StoreTestSuite) TestGetLatestVersionInvalid() {
 //	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT MAX(version_id) FROM db.migrations`)).
 //		WillReturnRows(sqlmock.NewRows([]string{"version"}).AddRow(0))
 //
@@ -213,7 +213,7 @@ func (suite *StoreTestSuite) TestGetLatestVersionNotFound() {
 //	assert.Error(suite.T(), err)
 //	//assert.Equal(suite.T(), "get latest version: sql: no rows in result set", err.Error())
 //	assert.Equal(suite.T(), int64(0), res)
-//}
+// }
 
 func (suite *StoreTestSuite) TestGetLatestVersionError() {
 	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT MAX(version_id) FROM db.migrations`)).

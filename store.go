@@ -7,17 +7,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/pressly/goose/v3/database"
 )
-
-var quorumSettings = clickhouse.Settings{
-	"insert_quorum":                 "all",
-	"insert_quorum_timeout":         60000,
-	"insert_distributed_sync":       1,
-	"select_sequential_consistency": 1,
-}
 
 type DistributedMigrationsTableConfig struct {
 	Cluster     string // Ex: default
