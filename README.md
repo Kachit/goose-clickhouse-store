@@ -5,7 +5,7 @@ This package provides a [Goose](https://github.com/pressly/goose) store implemen
 ## Download
 
 ```bash
-go get -u github.com/dimuska139/goose-clickhouse-store
+go get -u github.com/kachit/goose-clickhouse-store
 ```
 
 ## Usage

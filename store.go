@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/ClickHouse/clickhouse-go/v2"
-	"github.com/pressly/goose/v3/database"
 	"time"
+
+	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/huandu/go-sqlbuilder"
+	"github.com/pressly/goose/v3/database"
 )
 
 var quorumSettings = clickhouse.Settings{
@@ -32,13 +34,11 @@ type LocalMigrationsTableConfig struct {
 }
 
 type Store struct {
-	conn                             clickhouse.Conn
-	distributedMigrationsTableConfig DistributedMigrationsTableConfig
-	localMigrationsTableConfig       LocalMigrationsTableConfig
+	distributedTableConfig DistributedMigrationsTableConfig
+	localTableConfig       LocalMigrationsTableConfig
 }
 
 func NewStore(
-	conn clickhouse.Conn,
 	distributedMigrationsTableConfig DistributedMigrationsTableConfig,
 	localMigrationsTableConfig LocalMigrationsTableConfig,
 ) (*Store, error) {
@@ -47,59 +47,65 @@ func NewStore(
 	}
 
 	return &Store{
-		conn:                             conn,
-		distributedMigrationsTableConfig: distributedMigrationsTableConfig,
-		localMigrationsTableConfig:       localMigrationsTableConfig,
+		distributedTableConfig: distributedMigrationsTableConfig,
+		localTableConfig:       localMigrationsTableConfig,
 	}, nil
 }
 
 func (s *Store) Tablename() string {
-	return s.distributedMigrationsTableConfig.TableName
+	return s.distributedTableConfig.TableName
+}
+
+func (s *Store) TablenameFull() string {
+	return fmt.Sprintf("%s.%s",
+		s.distributedTableConfig.Database,
+		s.distributedTableConfig.TableName,
+	)
 }
 
 // CreateVersionTable creates the version table, which is used to track migrations.
-func (s *Store) CreateVersionTable(ctx context.Context, _ database.DBTxConn) error {
-	ctx = clickhouse.Context(ctx, clickhouse.WithSettings(quorumSettings))
-
-	localTableSQL := fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s (
-			version_id Int64,
-			is_applied UInt8,
-			date Date DEFAULT now(),
-			tstamp DateTime DEFAULT now()
-		) ENGINE = ReplicatedMergeTree('%s', '%s')
-		ORDER BY version_id`,
-		s.localMigrationsTableConfig.Database,
-		s.localMigrationsTableConfig.TableName+"_local",
-		s.distributedMigrationsTableConfig.Cluster,
-		s.localMigrationsTableConfig.ZooKeeperPath,
-		s.localMigrationsTableConfig.ReplicaName,
+func (s *Store) CreateVersionTable(ctx context.Context, tx database.DBTxConn) error {
+	localTable := fmt.Sprintf("%s.%s ON CLUSTER %s",
+		s.localTableConfig.Database,
+		s.localTableConfig.TableName,
+		s.distributedTableConfig.Cluster,
+	)
+	localTableEngine := fmt.Sprintf("ENGINE = ReplicatedMergeTree('%s', '%s')",
+		s.localTableConfig.ZooKeeperPath,
+		s.localTableConfig.ReplicaName,
 	)
 
-	if err := s.conn.Exec(ctx, localTableSQL); err != nil {
+	localCtb := sqlbuilder.NewCreateTableBuilder()
+	localCtb.CreateTable(localTable).IfNotExists()
+	localCtb.Define("version_id", "Int64")
+	localCtb.Define("is_applied", "UInt8")
+	localCtb.Define("date", "Date", "DEFAULT", "now()")
+	localCtb.Define("tstamp", "DateTime", "DEFAULT", "now()")
+	localCtb.Option(localTableEngine, "ORDER BY version_id")
+
+	if _, err := tx.ExecContext(ctx, localCtb.String()); err != nil {
 		return fmt.Errorf("create local migrations table: %w", err)
 	}
 
-	distributedTableSQL := fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s AS %s.%s
-		ENGINE = Distributed(
-			%s,
-			'%s',
-			'%s',
-			%s
-		)`,
-		s.distributedMigrationsTableConfig.Database,
-		s.distributedMigrationsTableConfig.TableName,
-		s.distributedMigrationsTableConfig.Cluster,
-		s.localMigrationsTableConfig.Database,
-		s.localMigrationsTableConfig.TableName,
-		s.distributedMigrationsTableConfig.Cluster,
-		s.distributedMigrationsTableConfig.Database,
-		s.localMigrationsTableConfig.TableName,
-		s.distributedMigrationsTableConfig.ShardingKey,
+	distributedTable := fmt.Sprintf("%s.%s ON CLUSTER %s AS %s.%s",
+		s.distributedTableConfig.Database,
+		s.distributedTableConfig.TableName,
+		s.distributedTableConfig.Cluster,
+		s.localTableConfig.Database,
+		s.localTableConfig.TableName,
+	)
+	distributedTableEngine := fmt.Sprintf("ENGINE = Distributed(%s, '%s', '%s', %s)",
+		s.distributedTableConfig.Cluster,
+		s.distributedTableConfig.Database,
+		s.localTableConfig.TableName,
+		s.distributedTableConfig.ShardingKey,
 	)
 
-	if err := s.conn.Exec(ctx, distributedTableSQL); err != nil {
+	distributedCtb := sqlbuilder.NewCreateTableBuilder()
+	distributedCtb.CreateTable(distributedTable).IfNotExists()
+	distributedCtb.Option(distributedTableEngine)
+
+	if _, err := tx.ExecContext(ctx, distributedCtb.String()); err != nil {
 		return fmt.Errorf("create distributed migrations table: %w", err)
 	}
 
@@ -107,17 +113,14 @@ func (s *Store) CreateVersionTable(ctx context.Context, _ database.DBTxConn) err
 }
 
 // Insert a version id into the version table.
-func (s *Store) Insert(ctx context.Context, _ database.DBTxConn, req database.InsertRequest) error {
-	ctx = clickhouse.Context(ctx, clickhouse.WithSettings(quorumSettings))
+func (s *Store) Insert(ctx context.Context, tx database.DBTxConn, req database.InsertRequest) error {
+	qb := sqlbuilder.NewInsertBuilder()
+	query, args := qb.InsertInto(s.TablenameFull()).
+		Cols("version_id", "is_applied").
+		Values(req.Version, 1).
+		Build()
 
-	sql := fmt.Sprintf(`
-		INSERT INTO %s.%s (version_id, is_applied, date, tstamp)
-		VALUES (?, ?, now(), now())`,
-		s.distributedMigrationsTableConfig.Database,
-		s.distributedMigrationsTableConfig.TableName,
-	)
-
-	if err := s.conn.Exec(ctx, sql, req.Version, 1); err != nil {
+	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
 		return fmt.Errorf("insert migration version %d: %w", req.Version, err)
 	}
 
@@ -125,13 +128,12 @@ func (s *Store) Insert(ctx context.Context, _ database.DBTxConn, req database.In
 }
 
 // Delete removes a version id from the version table.
-func (s *Store) Delete(ctx context.Context, _ database.DBTxConn, version int64) error {
-	query := fmt.Sprintf(`ALTER TABLE %s.%s DELETE WHERE version_id = ? SETTINGS mutations_sync = 2`,
-		s.distributedMigrationsTableConfig.Database,
-		s.distributedMigrationsTableConfig.TableName,
+func (s *Store) Delete(ctx context.Context, tx database.DBTxConn, version int64) error {
+	query := fmt.Sprintf(`ALTER TABLE %s DELETE WHERE version_id = ? SETTINGS mutations_sync = 2`,
+		s.TablenameFull(),
 	)
 
-	if err := s.conn.Exec(ctx, query, version); err != nil {
+	if _, err := tx.ExecContext(ctx, query, version); err != nil {
 		return fmt.Errorf("delete migration version %d: %w", version, err)
 	}
 
@@ -142,29 +144,26 @@ func (s *Store) Delete(ctx context.Context, _ database.DBTxConn, version int64) 
 // version is not found, this method must return [ErrVersionNotFound].
 func (s *Store) GetMigration(
 	ctx context.Context,
-	_ database.DBTxConn,
+	tx database.DBTxConn,
 	version int64,
 ) (*database.GetMigrationResult, error) {
-	ctx = clickhouse.Context(ctx, clickhouse.WithSettings(quorumSettings))
-
-	query := fmt.Sprintf(`
-		SELECT is_applied, tstamp
-		FROM %s.%s
-		WHERE version_id = ?
-		LIMIT 1`,
-		s.distributedMigrationsTableConfig.Database,
-		s.distributedMigrationsTableConfig.TableName,
-	)
-
-	row := s.conn.QueryRow(ctx, query, version)
-
 	var isApplied uint8
 	var timestamp time.Time
+
+	qb := sqlbuilder.NewSelectBuilder()
+	qb.Select("is_applied", "tstamp").
+		From(s.TablenameFull()).
+		Where(qb.Equal("version_id", version)).
+		Limit(1)
+
+	query, args := qb.Build()
+	row := tx.QueryRowContext(ctx, query, args...)
 
 	if err := row.Scan(&isApplied, &timestamp); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("%w: %d", database.ErrVersionNotFound, version)
 		}
+
 		return nil, fmt.Errorf("get migration %d: %w", version, err)
 	}
 
@@ -177,24 +176,25 @@ func (s *Store) GetMigration(
 
 // GetLatestVersion retrieves the last applied migration version. If no migrations exist, this
 // method must return [ErrVersionNotFound].
-func (s *Store) GetLatestVersion(ctx context.Context, _ database.DBTxConn) (int64, error) {
-	ctx = clickhouse.Context(ctx, clickhouse.WithSettings(quorumSettings))
-
-	query := fmt.Sprintf("SELECT MAX(version_id) FROM %s.%s",
-		s.distributedMigrationsTableConfig.Database,
-		s.distributedMigrationsTableConfig.TableName,
-	)
-
-	row := s.conn.QueryRow(ctx, query)
-
+func (s *Store) GetLatestVersion(ctx context.Context, tx database.DBTxConn) (int64, error) {
 	var version sql.NullInt64
 
+	qb := sqlbuilder.NewSelectBuilder()
+	qb.Select("MAX(version_id)").
+		From(s.TablenameFull())
+	query, _ := qb.Build()
+
+	row := tx.QueryRowContext(ctx, query)
+	if err := row.Err(); err != nil {
+		return -1, fmt.Errorf("get latest version: %w", err)
+	}
+
 	if err := row.Scan(&version); err != nil {
-		return 0, fmt.Errorf("get latest version: %w", err)
+		return -1, fmt.Errorf("get latest version: %w", err)
 	}
 
 	if !version.Valid {
-		return 0, database.ErrVersionNotFound
+		return -1, database.ErrVersionNotFound
 	}
 
 	return version.Int64, nil
@@ -204,32 +204,28 @@ func (s *Store) GetLatestVersion(ctx context.Context, _ database.DBTxConn) (int6
 // there are no migrations, return an empty slice with no error. Typically, this method will return
 // at least one migration because the initial version (0) is always inserted into the version
 // table when it is created.
-func (s *Store) ListMigrations(ctx context.Context, _ database.DBTxConn) ([]*database.ListMigrationsResult, error) {
-	ctx = clickhouse.Context(ctx, clickhouse.WithSettings(quorumSettings))
+func (s *Store) ListMigrations(ctx context.Context, tx database.DBTxConn) ([]*database.ListMigrationsResult, error) {
+	var migrations []*database.ListMigrationsResult
 
-	query := fmt.Sprintf(`
-		SELECT version_id, is_applied
-		FROM %s.%s
-		ORDER BY version_id DESC`,
-		s.distributedMigrationsTableConfig.Database,
-		s.distributedMigrationsTableConfig.TableName,
-	)
+	qb := sqlbuilder.NewSelectBuilder()
+	qb.Select("version_id", "is_applied").
+		From(s.TablenameFull()).
+		OrderByDesc("version_id")
 
-	rows, err := s.conn.Query(ctx, query)
+	query, _ := qb.Build()
+
+	rows, err := tx.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("query: %w", err)
 	}
 
 	defer rows.Close()
 
-	var migrations []*database.ListMigrationsResult
-
 	for rows.Next() {
 		var versionID int64
 		var isApplied uint8
-		var timestamp time.Time
 
-		if err := rows.Scan(&versionID, &isApplied, &timestamp); err != nil {
+		if err := rows.Scan(&versionID, &isApplied); err != nil {
 			return nil, fmt.Errorf("scan: %w", err)
 		}
 

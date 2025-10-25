@@ -4,12 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/ClickHouse/clickhouse-go/v2"
-	"github.com/pressly/goose/v3"
 	"log"
 
-	goose_clickhouse_store "github.com/dimuska139/goose-clickhouse-store"
-	"github.com/dimuska139/goose-clickhouse-store/example/migrations"
+	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/pressly/goose/v3"
+
+	goose_clickhouse_store "github.com/kachit/goose-clickhouse-store"
+	"github.com/kachit/goose-clickhouse-store/example/migrations"
 )
 
 func main() {
@@ -28,7 +29,6 @@ func main() {
 	dbName := "mystorage"
 
 	clickhouseStore, err := goose_clickhouse_store.NewStore(
-		conn,
 		goose_clickhouse_store.DistributedMigrationsTableConfig{
 			Cluster:     "default",
 			Database:    dbName,
@@ -36,7 +36,7 @@ func main() {
 			ShardingKey: "rand()",
 		},
 		goose_clickhouse_store.LocalMigrationsTableConfig{
-			ZooKeeperPath: "/clickhouse/tables/{shard}/nats2clickhouse/migrations",
+			ZooKeeperPath: "/clickhouse/tables/{shard}/dbname/migrations",
 			ReplicaName:   "{replica}",
 			Database:      dbName,
 			TableName:     "migrations_local",
