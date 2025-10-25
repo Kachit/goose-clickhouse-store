@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-var createLocalTableSql = `CREATE TABLE IF NOT EXISTS db.migrations_part ON CLUSTER default (version_id Int64, is_applied UInt8, date Date DEFAULT now(), tstamp DateTime DEFAULT now()) ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/nats2clickhouse/migrations', '{replica}') ORDER BY version_id`
+var createLocalTableSql = `CREATE TABLE IF NOT EXISTS db.migrations_part ON CLUSTER default (version_id Int64, is_applied UInt8, date Date DEFAULT now(), tstamp DateTime DEFAULT now()) ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/dbname/migrations', '{replica}') ORDER BY version_id`
 var createDistributedTableSql = `CREATE TABLE IF NOT EXISTS db.migrations ON CLUSTER default AS db.migrations_part ENGINE = Distributed(default, 'db', 'migrations_part', rand())`
 
 type StoreTestSuite struct {
@@ -37,7 +37,7 @@ func (suite *StoreTestSuite) SetupTest() {
 		ShardingKey: "rand()",
 	},
 		LocalMigrationsTableConfig{
-			ZooKeeperPath: "/clickhouse/tables/{shard}/nats2clickhouse/migrations",
+			ZooKeeperPath: "/clickhouse/tables/{shard}/dbname/migrations",
 			ReplicaName:   "{replica}",
 			Database:      "db",
 			TableName:     "migrations_part",
@@ -53,7 +53,7 @@ func (suite *StoreTestSuite) TestDistributedAndLocalTableHasSameNameError() {
 		ShardingKey: "rand()",
 	},
 		LocalMigrationsTableConfig{
-			ZooKeeperPath: "/clickhouse/tables/{shard}/nats2clickhouse/migrations",
+			ZooKeeperPath: "/clickhouse/tables/{shard}/dbname/migrations",
 			ReplicaName:   "{replica}",
 			Database:      "db",
 			TableName:     "migrations",

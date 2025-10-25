@@ -9,6 +9,22 @@
 This package provides a [Goose](https://github.com/pressly/goose) store implementation for ClickHouse database 
 and adds a distributed migrations table feature.
 
+Local migrations table:
+```sql
+CREATE TABLE IF NOT EXISTS db.migrations_part ON CLUSTER default (
+	version_id Int64, 
+	is_applied UInt8, 
+	date Date DEFAULT now(), 
+	tstamp DateTime DEFAULT now()
+) ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/dbname/migrations', '{replica}') ORDER BY version_id
+```
+
+Distributed migrations table:
+```sql
+CREATE TABLE IF NOT EXISTS db.migrations ON CLUSTER default AS db.migrations_part
+    ENGINE = Distributed(default, 'db', 'migrations_part', rand())
+```
+
 ## Download
 ```bash
 go get -u github.com/Kachit/goose-clickhouse-store
@@ -16,3 +32,13 @@ go get -u github.com/Kachit/goose-clickhouse-store
 
 ## Usage
 You can find an example [here](https://github.com/Kachit/goose-clickhouse-store/example).
+
+## Coverage
+```bash
+go test --coverprofile=coverage.out ./... ; go tool cover -func coverage.out ; go tool cover --html=coverage.out -o coverage.html
+```
+
+## Linters ##
+```bash
+golangci-lint run
+```
