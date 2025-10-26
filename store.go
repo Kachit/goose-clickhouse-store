@@ -11,29 +11,6 @@ import (
 	"github.com/pressly/goose/v3/database"
 )
 
-var DistributedMigrationsTableConfigByDefault = DistributedMigrationsTableConfig{
-	Cluster:     "default",
-	ShardingKey: "rand()",
-}
-
-var LocalMigrationsTableConfigByDefault = LocalMigrationsTableConfig{
-	ReplicaName: "{replica}",
-}
-
-type DistributedMigrationsTableConfig struct {
-	Cluster     string // Ex: default
-	Database    string // Ex: mydb
-	TableName   string // Ex: migrations
-	ShardingKey string // Ex: rand()
-}
-
-type LocalMigrationsTableConfig struct {
-	ZooKeeperPath string
-	ReplicaName   string
-	Database      string
-	TableName     string // Ex: migrations_local
-}
-
 type Store struct {
 	distributedTableConfig DistributedMigrationsTableConfig
 	localTableConfig       LocalMigrationsTableConfig
