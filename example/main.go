@@ -47,7 +47,7 @@ func main() {
 	p, err := goose.NewProvider(
 		"",
 		conn,
-		migrations.Embed,
+		migrations.Migrations,
 		goose.WithStore(clickhouseStore),
 	)
 	if err != nil {

@@ -2,5 +2,5 @@ package migrations
 
 import "embed"
 
-//go:embed *.go
-var Embed embed.FS
+//go:embed *.sql
+var Migrations embed.FS
