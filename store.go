@@ -50,9 +50,8 @@ func (s *Store) TablenameFullLocal() string {
 
 // CreateVersionTable creates the version table, which is used to track migrations.
 func (s *Store) CreateVersionTable(ctx context.Context, tx database.DBTxConn) error {
-	localTable := fmt.Sprintf("%s.%s ON CLUSTER %s",
-		s.localTableConfig.Database,
-		s.localTableConfig.TableName,
+	localTable := fmt.Sprintf("%s ON CLUSTER %s",
+		s.TablenameFullLocal(),
 		s.distributedTableConfig.Cluster,
 	)
 	localTableEngine := fmt.Sprintf("ENGINE = ReplicatedMergeTree('%s', '%s')",
@@ -72,12 +71,10 @@ func (s *Store) CreateVersionTable(ctx context.Context, tx database.DBTxConn) er
 		return fmt.Errorf("create local migrations table: %w", err)
 	}
 
-	distributedTable := fmt.Sprintf("%s.%s ON CLUSTER %s AS %s.%s",
-		s.distributedTableConfig.Database,
-		s.distributedTableConfig.TableName,
+	distributedTable := fmt.Sprintf("%s ON CLUSTER %s AS %s",
+		s.TablenameFullDistributed(),
 		s.distributedTableConfig.Cluster,
-		s.localTableConfig.Database,
-		s.localTableConfig.TableName,
+		s.TablenameFullLocal(),
 	)
 	distributedTableEngine := fmt.Sprintf("ENGINE = Distributed(%s, '%s', '%s', %s)",
 		s.distributedTableConfig.Cluster,
@@ -210,7 +207,7 @@ func (s *Store) ListMigrations(ctx context.Context, tx database.DBTxConn) ([]*da
 		var versionID int64
 		var isApplied uint8
 
-		if err := rows.Scan(&versionID, &isApplied); err != nil {
+		if err = rows.Scan(&versionID, &isApplied); err != nil {
 			return nil, fmt.Errorf("scan: %w", err)
 		}
 

@@ -131,7 +131,7 @@ func (suite *StoreTestSuite) TestInsertError() {
 func (suite *StoreTestSuite) TestDeleteSuccess() {
 	version := int64(1234567)
 
-	suite.mock.ExpectExec(regexp.QuoteMeta(`ALTER TABLE db.migrations DELETE WHERE version_id = ? SETTINGS mutations_sync = 2`)).
+	suite.mock.ExpectExec(regexp.QuoteMeta(`ALTER TABLE db.migrations_part DELETE WHERE version_id = ?`)).
 		WithArgs(version).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
@@ -142,7 +142,7 @@ func (suite *StoreTestSuite) TestDeleteSuccess() {
 func (suite *StoreTestSuite) TestDeleteError() {
 	version := int64(1234567)
 
-	suite.mock.ExpectExec(regexp.QuoteMeta(`ALTER TABLE db.migrations DELETE WHERE version_id = ? SETTINGS mutations_sync = 2`)).
+	suite.mock.ExpectExec(regexp.QuoteMeta(`ALTER TABLE db.migrations_part DELETE WHERE version_id = ?`)).
 		WithArgs(version).
 		WillReturnError(errors.New("error"))
 
