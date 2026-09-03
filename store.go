@@ -34,10 +34,17 @@ func (s *Store) Tablename() string {
 	return s.distributedTableConfig.TableName
 }
 
-func (s *Store) TablenameFull() string {
+func (s *Store) TablenameFullDistributed() string {
 	return fmt.Sprintf("%s.%s",
 		s.distributedTableConfig.Database,
 		s.distributedTableConfig.TableName,
+	)
+}
+
+func (s *Store) TablenameFullLocal() string {
+	return fmt.Sprintf("%s.%s",
+		s.localTableConfig.Database,
+		s.localTableConfig.TableName,
 	)
 }
 
@@ -93,7 +100,7 @@ func (s *Store) CreateVersionTable(ctx context.Context, tx database.DBTxConn) er
 // Insert a version id into the version table.
 func (s *Store) Insert(ctx context.Context, tx database.DBTxConn, req database.InsertRequest) error {
 	qb := sqlbuilder.NewInsertBuilder()
-	query, args := qb.InsertInto(s.TablenameFull()).
+	query, args := qb.InsertInto(s.TablenameFullDistributed()).
 		Cols("version_id", "is_applied").
 		Values(req.Version, 1).
 		Build()
@@ -107,8 +114,8 @@ func (s *Store) Insert(ctx context.Context, tx database.DBTxConn, req database.I
 
 // Delete removes a version id from the version table.
 func (s *Store) Delete(ctx context.Context, tx database.DBTxConn, version int64) error {
-	query := fmt.Sprintf(`ALTER TABLE %s DELETE WHERE version_id = ? SETTINGS mutations_sync = 2`,
-		s.TablenameFull(),
+	query := fmt.Sprintf(`ALTER TABLE %s DELETE WHERE version_id = ?`,
+		s.TablenameFullLocal(),
 	)
 
 	if _, err := tx.ExecContext(ctx, query, version); err != nil {
@@ -130,7 +137,7 @@ func (s *Store) GetMigration(
 
 	qb := sqlbuilder.NewSelectBuilder()
 	qb.Select("is_applied", "tstamp").
-		From(s.TablenameFull()).
+		From(s.TablenameFullDistributed()).
 		Where(qb.Equal("version_id", version)).
 		Limit(1)
 
@@ -159,7 +166,7 @@ func (s *Store) GetLatestVersion(ctx context.Context, tx database.DBTxConn) (int
 
 	qb := sqlbuilder.NewSelectBuilder()
 	qb.Select("MAX(version_id)").
-		From(s.TablenameFull())
+		From(s.TablenameFullDistributed())
 	query, _ := qb.Build()
 
 	row := tx.QueryRowContext(ctx, query)
@@ -187,7 +194,7 @@ func (s *Store) ListMigrations(ctx context.Context, tx database.DBTxConn) ([]*da
 
 	qb := sqlbuilder.NewSelectBuilder()
 	qb.Select("version_id", "is_applied").
-		From(s.TablenameFull()).
+		From(s.TablenameFullDistributed()).
 		OrderByDesc("version_id")
 
 	query, _ := qb.Build()

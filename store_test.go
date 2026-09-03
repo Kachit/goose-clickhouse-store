@@ -67,8 +67,12 @@ func (suite *StoreTestSuite) TestTableName() {
 	suite.Equal("migrations", suite.testable.Tablename())
 }
 
-func (suite *StoreTestSuite) TestTableNameFull() {
-	suite.Equal("db.migrations", suite.testable.TablenameFull())
+func (suite *StoreTestSuite) TestTableNameFullDistributed() {
+	suite.Equal("db.migrations", suite.testable.TablenameFullDistributed())
+}
+
+func (suite *StoreTestSuite) TestTableNameFullLocal() {
+	suite.Equal("db.migrations_part", suite.testable.TablenameFullLocal())
 }
 
 func (suite *StoreTestSuite) TestCreateVersionTableSuccess() {
