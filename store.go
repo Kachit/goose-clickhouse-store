@@ -217,7 +217,7 @@ func (s *Store) ListMigrations(ctx context.Context, tx database.DBTxConn) ([]*da
 		})
 	}
 
-	if err := rows.Err(); err != nil {
+	if err = rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterating rows: %w", err)
 	}
 
