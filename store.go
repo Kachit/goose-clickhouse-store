@@ -34,18 +34,24 @@ func (s *Store) Tablename() string {
 	return s.distributedTableConfig.TableName
 }
 
-func (s *Store) TablenameFull() string {
+func (s *Store) TablenameFullDistributed() string {
 	return fmt.Sprintf("%s.%s",
 		s.distributedTableConfig.Database,
 		s.distributedTableConfig.TableName,
 	)
 }
 
-// CreateVersionTable creates the version table, which is used to track migrations.
-func (s *Store) CreateVersionTable(ctx context.Context, tx database.DBTxConn) error {
-	localTable := fmt.Sprintf("%s.%s ON CLUSTER %s",
+func (s *Store) TablenameFullLocal() string {
+	return fmt.Sprintf("%s.%s",
 		s.localTableConfig.Database,
 		s.localTableConfig.TableName,
+	)
+}
+
+// CreateVersionTable creates the version table, which is used to track migrations.
+func (s *Store) CreateVersionTable(ctx context.Context, tx database.DBTxConn) error {
+	localTable := fmt.Sprintf("%s ON CLUSTER %s",
+		s.TablenameFullLocal(),
 		s.distributedTableConfig.Cluster,
 	)
 	localTableEngine := fmt.Sprintf("ENGINE = ReplicatedMergeTree('%s', '%s')",
@@ -65,12 +71,10 @@ func (s *Store) CreateVersionTable(ctx context.Context, tx database.DBTxConn) er
 		return fmt.Errorf("create local migrations table: %w", err)
 	}
 
-	distributedTable := fmt.Sprintf("%s.%s ON CLUSTER %s AS %s.%s",
-		s.distributedTableConfig.Database,
-		s.distributedTableConfig.TableName,
+	distributedTable := fmt.Sprintf("%s ON CLUSTER %s AS %s",
+		s.TablenameFullDistributed(),
 		s.distributedTableConfig.Cluster,
-		s.localTableConfig.Database,
-		s.localTableConfig.TableName,
+		s.TablenameFullLocal(),
 	)
 	distributedTableEngine := fmt.Sprintf("ENGINE = Distributed(%s, '%s', '%s', %s)",
 		s.distributedTableConfig.Cluster,
@@ -93,7 +97,7 @@ func (s *Store) CreateVersionTable(ctx context.Context, tx database.DBTxConn) er
 // Insert a version id into the version table.
 func (s *Store) Insert(ctx context.Context, tx database.DBTxConn, req database.InsertRequest) error {
 	qb := sqlbuilder.NewInsertBuilder()
-	query, args := qb.InsertInto(s.TablenameFull()).
+	query, args := qb.InsertInto(s.TablenameFullDistributed()).
 		Cols("version_id", "is_applied").
 		Values(req.Version, 1).
 		Build()
@@ -107,8 +111,10 @@ func (s *Store) Insert(ctx context.Context, tx database.DBTxConn, req database.I
 
 // Delete removes a version id from the version table.
 func (s *Store) Delete(ctx context.Context, tx database.DBTxConn, version int64) error {
-	query := fmt.Sprintf(`ALTER TABLE %s DELETE WHERE version_id = ? SETTINGS mutations_sync = 2`,
-		s.TablenameFull(),
+	query := fmt.Sprintf(`ALTER TABLE %s ON CLUSTER %s DELETE WHERE version_id = ? SETTINGS mutations_sync = %d`,
+		s.TablenameFullLocal(),
+		s.distributedTableConfig.Cluster,
+		s.distributedTableConfig.MutationsSync,
 	)
 
 	if _, err := tx.ExecContext(ctx, query, version); err != nil {
@@ -130,7 +136,7 @@ func (s *Store) GetMigration(
 
 	qb := sqlbuilder.NewSelectBuilder()
 	qb.Select("is_applied", "tstamp").
-		From(s.TablenameFull()).
+		From(s.TablenameFullDistributed()).
 		Where(qb.Equal("version_id", version)).
 		Limit(1)
 
@@ -159,7 +165,7 @@ func (s *Store) GetLatestVersion(ctx context.Context, tx database.DBTxConn) (int
 
 	qb := sqlbuilder.NewSelectBuilder()
 	qb.Select("MAX(version_id)").
-		From(s.TablenameFull())
+		From(s.TablenameFullDistributed())
 	query, _ := qb.Build()
 
 	row := tx.QueryRowContext(ctx, query)
@@ -187,7 +193,7 @@ func (s *Store) ListMigrations(ctx context.Context, tx database.DBTxConn) ([]*da
 
 	qb := sqlbuilder.NewSelectBuilder()
 	qb.Select("version_id", "is_applied").
-		From(s.TablenameFull()).
+		From(s.TablenameFullDistributed()).
 		OrderByDesc("version_id")
 
 	query, _ := qb.Build()
@@ -197,13 +203,13 @@ func (s *Store) ListMigrations(ctx context.Context, tx database.DBTxConn) ([]*da
 		return nil, fmt.Errorf("query: %w", err)
 	}
 
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var versionID int64
 		var isApplied uint8
 
-		if err := rows.Scan(&versionID, &isApplied); err != nil {
+		if err = rows.Scan(&versionID, &isApplied); err != nil {
 			return nil, fmt.Errorf("scan: %w", err)
 		}
 
@@ -213,7 +219,7 @@ func (s *Store) ListMigrations(ctx context.Context, tx database.DBTxConn) ([]*da
 		})
 	}
 
-	if err := rows.Err(); err != nil {
+	if err = rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterating rows: %w", err)
 	}
 
