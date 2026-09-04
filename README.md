@@ -41,7 +41,7 @@ go get -u github.com/Kachit/goose-clickhouse-store
 ```
 
 ## Usage
-You can find an example [here](https://github.com/Kachit/goose-clickhouse-store/example).
+You can find an example [here](https://github.com/Kachit/goose-clickhouse-store/blob/master/example/main.go).
 
 ## Coverage
 ```bash
