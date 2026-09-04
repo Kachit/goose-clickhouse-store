@@ -1,8 +1,9 @@
 package goose_clickhouse_store
 
 var DistributedMigrationsTableConfigByDefault = DistributedMigrationsTableConfig{
-	Cluster:     "default",
-	ShardingKey: "rand()",
+	Cluster:       "default",
+	ShardingKey:   "rand()",
+	MutationsSync: 2,
 }
 
 var LocalMigrationsTableConfigByDefault = LocalMigrationsTableConfig{
@@ -14,6 +15,9 @@ type DistributedMigrationsTableConfig struct {
 	Database    string
 	TableName   string
 	ShardingKey string
+	// MutationsSync controls the mutations_sync setting applied to the ALTER TABLE ... DELETE
+	// statement in Delete: 0 - async, 1 - wait for the current server, 2 - wait for all replicas.
+	MutationsSync uint8
 }
 
 type LocalMigrationsTableConfig struct {

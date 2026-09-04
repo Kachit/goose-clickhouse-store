@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/github/license/Kachit/goose-clickhouse-store)](https://github.com/Kachit/goose-clickhouse-store/blob/master/LICENSE)
 
 This package provides a [Goose](https://github.com/pressly/goose) store implementation for ClickHouse database 
-and adds a distributed migrations table feature.
+and add a distributed migrations table feature.
 
 Local migrations table:
 ```sql
@@ -24,6 +24,16 @@ Distributed migrations table:
 CREATE TABLE IF NOT EXISTS db.migrations ON CLUSTER default AS db.migrations_part
     ENGINE = Distributed(default, 'db', 'migrations_part', rand())
 ```
+
+Reads and inserts go through the distributed table. Deletes (`goose down`) run against
+the local table on every cluster node, because ClickHouse does not support mutations on
+the `Distributed` engine:
+```sql
+ALTER TABLE db.migrations_part ON CLUSTER default DELETE WHERE version_id = ? SETTINGS mutations_sync = 2
+```
+
+`mutations_sync` is set from `DistributedMigrationsTableConfig.MutationsSync`
+(`0` - async, `1` - wait for the current server, `2` - wait for all replicas; default `2`).
 
 ## Download
 ```bash

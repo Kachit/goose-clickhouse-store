@@ -13,7 +13,9 @@ import (
 )
 
 func main() {
-	clickhouseConfig, err := clickhouse.ParseDSN("")
+	dsn := "clickhouse://default:password@localhost:9000/dbname?dial_timeout=10s&max_execution_time=60"
+
+	clickhouseConfig, err := clickhouse.ParseDSN(dsn)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -29,10 +31,11 @@ func main() {
 
 	clickhouseStore, err := goose_clickhouse_store.NewStore(
 		goose_clickhouse_store.DistributedMigrationsTableConfig{
-			Cluster:     "default",
-			Database:    dbName,
-			TableName:   "migrations",
-			ShardingKey: "rand()",
+			Cluster:       "default",
+			Database:      dbName,
+			TableName:     "migrations",
+			ShardingKey:   "rand()",
+			MutationsSync: 2,
 		},
 		goose_clickhouse_store.LocalMigrationsTableConfig{
 			ZooKeeperPath: fmt.Sprintf("/clickhouse/tables/{shard}/%s/migrations", dbName),

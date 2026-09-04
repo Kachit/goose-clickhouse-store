@@ -31,10 +31,11 @@ func (suite *StoreTestSuite) SetupTest() {
 	suite.db = db
 	suite.mock = mock
 	suite.testable, _ = NewStore(DistributedMigrationsTableConfig{
-		Cluster:     "default",
-		Database:    "db",
-		TableName:   "migrations",
-		ShardingKey: "rand()",
+		Cluster:       "default",
+		Database:      "db",
+		TableName:     "migrations",
+		ShardingKey:   "rand()",
+		MutationsSync: 2,
 	},
 		LocalMigrationsTableConfig{
 			ZooKeeperPath: "/clickhouse/tables/{shard}/dbname/migrations",
@@ -131,7 +132,7 @@ func (suite *StoreTestSuite) TestInsertError() {
 func (suite *StoreTestSuite) TestDeleteSuccess() {
 	version := int64(1234567)
 
-	suite.mock.ExpectExec(regexp.QuoteMeta(`ALTER TABLE db.migrations_part DELETE WHERE version_id = ?`)).
+	suite.mock.ExpectExec(regexp.QuoteMeta(`ALTER TABLE db.migrations_part ON CLUSTER default DELETE WHERE version_id = ? SETTINGS mutations_sync = 2`)).
 		WithArgs(version).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
@@ -142,7 +143,7 @@ func (suite *StoreTestSuite) TestDeleteSuccess() {
 func (suite *StoreTestSuite) TestDeleteError() {
 	version := int64(1234567)
 
-	suite.mock.ExpectExec(regexp.QuoteMeta(`ALTER TABLE db.migrations_part DELETE WHERE version_id = ?`)).
+	suite.mock.ExpectExec(regexp.QuoteMeta(`ALTER TABLE db.migrations_part ON CLUSTER default DELETE WHERE version_id = ? SETTINGS mutations_sync = 2`)).
 		WithArgs(version).
 		WillReturnError(errors.New("error"))
 
@@ -209,15 +210,15 @@ func (suite *StoreTestSuite) TestGetLatestVersionNotFound() {
 	assert.Equal(suite.T(), int64(-1), res)
 }
 
-// func (suite *StoreTestSuite) TestGetLatestVersionInvalid() {
-//	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT MAX(version_id) FROM db.migrations`)).
-//		WillReturnRows(sqlmock.NewRows([]string{"version"}).AddRow(0))
-//
-//	res, err := suite.testable.GetLatestVersion(suite.ctx, suite.db)
-//	assert.Error(suite.T(), err)
-//	//assert.Equal(suite.T(), "get latest version: sql: no rows in result set", err.Error())
-//	assert.Equal(suite.T(), int64(0), res)
-// }
+func (suite *StoreTestSuite) TestGetLatestVersionInvalid() {
+	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT MAX(version_id) FROM db.migrations`)).
+		WillReturnRows(sqlmock.NewRows([]string{"version"}).AddRow(nil))
+
+	res, err := suite.testable.GetLatestVersion(suite.ctx, suite.db)
+	assert.Error(suite.T(), err)
+	assert.ErrorIs(suite.T(), err, database.ErrVersionNotFound)
+	assert.Equal(suite.T(), int64(-1), res)
+}
 
 func (suite *StoreTestSuite) TestGetLatestVersionError() {
 	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT MAX(version_id) FROM db.migrations`)).

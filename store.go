@@ -111,8 +111,10 @@ func (s *Store) Insert(ctx context.Context, tx database.DBTxConn, req database.I
 
 // Delete removes a version id from the version table.
 func (s *Store) Delete(ctx context.Context, tx database.DBTxConn, version int64) error {
-	query := fmt.Sprintf(`ALTER TABLE %s DELETE WHERE version_id = ?`,
+	query := fmt.Sprintf(`ALTER TABLE %s ON CLUSTER %s DELETE WHERE version_id = ? SETTINGS mutations_sync = %d`,
 		s.TablenameFullLocal(),
+		s.distributedTableConfig.Cluster,
+		s.distributedTableConfig.MutationsSync,
 	)
 
 	if _, err := tx.ExecContext(ctx, query, version); err != nil {
@@ -201,7 +203,7 @@ func (s *Store) ListMigrations(ctx context.Context, tx database.DBTxConn) ([]*da
 		return nil, fmt.Errorf("query: %w", err)
 	}
 
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var versionID int64
